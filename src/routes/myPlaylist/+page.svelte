@@ -1,8 +1,5 @@
 <script lang="ts">
-	import '../app.css';
-	import { goto } from '$app/navigation';
-
-	import Spacer from '../components/spacer.svelte';
+	import '../../app.css';
 	import {
 		Table,
 		TableBody,
@@ -36,80 +33,39 @@
 	};
 
 	import { onMount } from 'svelte';
+	import Spacer from '../../components/spacer.svelte';
 
-	let data: Playlist[] | null = null;
-	let selectedPlaylist: Playlist | null = null;
-	let myPlaylist: Playlist | null = null;
+	let data: Playlist | null = null;
+	let forceRerender = 0;
 
-	async function init() {
+	onMount(async () => {
 		// I don't know the playlist selection screen so nevermind lol
-		const response = await fetch('http://localhost:8080/playlists');
+		const response = await fetch('http://localhost:8080/myPlaylist');
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
 		data = await response.json();
-		if (data) {
-			for (let index = 0; index < data.length; index++) {
-				if (data[index].author.toLowerCase() !== 'me') {
-					selectedPlaylist = data[index];
-				} else {
-					myPlaylist = data[index];
-				}
-			}
-		}
-		mapMyPlaylistTrack();
-	}
-
-	onMount(async () => {
-		await init();
+		console.log('returned ', data);
 	});
-
-	// const TABLE_HEADER = ['TITLE', 'ARTIST', 'ALBUM', 'RELEASE DATE', 'DURATION'];
 
 	let selectedIds: Record<string | number, boolean> = {};
 
 	let searchTerm = '';
-	function mapMyPlaylistTrack() {
-		selectedPlaylist?.tracks.forEach((track) => {
-			if (myPlaylist?.tracks.findIndex((myTrack) => myTrack._id === track._id) !== -1) {
-				selectedIds[track._id] = true;
-			}
-		});
-	}
 
-	async function saveTrackToPlaylist(trackId: string) {
-		const response = await fetch('http://localhost:8080/myPlaylist/saveTrackToMyPlaylist', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ trackId })
-		});
-
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
-		}
-
-		const data = await response.json();
-
-		console.log(data);
-	}
-
-	async function removeTrackFromPlaylist(trackId: string) {
+	async function removeTrackFromPlaylist(playlistId: string, trackId: string) {
 		const response = await fetch('http://localhost:8080/myPlaylist/removeTrackFromMyPlaylist', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify({ trackId })
+			body: JSON.stringify({ playlistId, trackId })
 		});
 
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
 
-		const data = await response.json();
-		console.log(data);
+		data = await response.json();
 	}
 
 	function convertToYYYYMMDD(dateString: string) {
@@ -121,36 +77,12 @@
 		return `${year}-${month}-${day}`;
 	}
 
-	function msToHM(ms: number) {
-		let seconds = ms / 1000;
-		const hours = seconds / 3600;
-		seconds %= 3600;
-		const minutes = seconds / 60;
-		seconds %= 60;
-
-		return `${Math.round(hours)} hr ${Math.round(minutes)} min`;
-	}
-
-	$: formattedTotalDuration = msToHM(selectedPlaylist?.totalDuration ?? 0);
-
-	$: filteredItems = selectedPlaylist?.tracks.filter(
+	$: filteredItems = data?.tracks.filter(
 		(item) => item.title.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1
 	);
-
-	$: toggleRowSelection = (id: string) => {
-		if (selectedIds[id]) {
-			removeTrackFromPlaylist(id);
-		} else {
-			saveTrackToPlaylist(id);
-		}
-		selectedIds = {
-			...selectedIds,
-			[id]: !selectedIds[id]
-		};
-	};
 </script>
 
-<div class="w-screen min-h-screen bg pt-5 pl-6 pr-9 text-white font-montserrat">
+<div class="w-screen h-screen bg pt-5 pl-6 pr-9 text-white font-montserrat">
 	{#if !data}
 		<div class="flex w-full h-[calc(100vh-20px)] justify-center items-center">
 			<Spinner size="20" />
@@ -167,29 +99,22 @@
 			<div class="flex flex-1 h-[300px] flex-col justify-between">
 				<Spacer gap={'1.5rem'} />
 				<h2 class="">Playlist</h2>
-				<h1 class="text-6xl">{selectedPlaylist?.name}</h1>
-				<h1>{selectedPlaylist?.description}</h1>
+				<h1 class="text-6xl">{data?.name}</h1>
+				<h1>{data?.description}</h1>
 				<h1>
 					Created by: <span class="font-bold">
-						{selectedPlaylist?.author}
+						{data?.author}
 					</span>
-					{selectedPlaylist?.tracks.length}
-					{formattedTotalDuration}
+					{data?.tracks.length} songs, Add time converter later
 				</h1>
 				<div class="flex w-full justify-between">
 					<div class="flex items-center gap-[0.875rem]">
 						<button class="px-[3.125rem] py-4 bg-[#55ba54] rounded-full">PLAY</button>
 						<button class="border-2 border-white rounded-full w-12 h-12 font-bold">...</button>
-						<button
-							class="border-2 border-white rounded-full px-4 py-3"
-							on:click={() => {
-								goto('/myPlaylist');
-							}}>Go to My Playlist</button
-						>
 					</div>
 					<div class="text-right">
 						<h1>FOLLOWERS</h1>
-						<h1>{selectedPlaylist?.followerCount}</h1>
+						<h1>{data?.followerCount}</h1>
 					</div>
 				</div>
 			</div>
@@ -200,7 +125,6 @@
 			hoverable={true}
 			bind:inputValue={searchTerm}
 			color="custom"
-			divClass="overflow-y-scroll h-[35rem] pr-5"
 			inputClass="bg-transparent border-none text-wgite text-sm rounded-lg w-80 p-2.5 ps-10"
 		>
 			<TableHead>
@@ -215,11 +139,10 @@
 				{#each filteredItems ?? [] as track}
 					<TableBodyRow>
 						<TableBodyCell class="text-right">
-							{#if !!selectedIds[track._id]}
-								<button on:click={() => toggleRowSelection(track._id)} class="text-xl">✓</button>
-							{:else}
-								<button on:click={() => toggleRowSelection(track._id)} class="text-xl">+</button>
-							{/if}
+							<button
+								on:click={() => removeTrackFromPlaylist(data?._id ?? '', track._id)}
+								class="text-xl">-</button
+							>
 						</TableBodyCell>
 						<TableBodyCell>
 							{track.title}
